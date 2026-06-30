@@ -1,0 +1,6 @@
+{
+  "name": "Poster & Layout Creator",
+  "description": "A lightweight web-based publishing application for creating graphics, social media posts, posters, slides, and certificates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
