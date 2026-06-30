@@ -279,17 +279,27 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
     setZoomRatio(optimalZoom);
   };
 
+  // Register custom properties globally on Fabric classes for serialization in Fabric v6/v7
   useEffect(() => {
-    if (!htmlCanvasRef.current || !containerRef.current || !currentProject) return;
+    const customProps = ['id', 'name', 'isRichText', 'htmlContent', 'styleOptions', 'lockUniScaling'];
+    if ((fabric as any).FabricObject) {
+      (fabric as any).FabricObject.customProperties = customProps;
+    }
+    if (fabric.Object) {
+      (fabric.Object as any).customProperties = customProps;
+    }
+    // Lock aspect ratio scaling by default on images globally
+    if (fabric.Image) {
+      (fabric.Image.prototype as any).lockUniScaling = true;
+    }
+  }, []);
 
-    const projectWidth = currentProject.width;
-    const projectHeight = currentProject.height;
+  // 1. Initialize the Fabric canvas once on mount
+  useEffect(() => {
+    if (!htmlCanvasRef.current || !containerRef.current) return;
 
     // Create the Fabric canvas
     const canvas = new fabric.Canvas(htmlCanvasRef.current, {
-      width: projectWidth,
-      height: projectHeight,
-      backgroundColor: currentProject.pages[currentProject.activePageIndex]?.backgroundColor || '#ffffff',
       preserveObjectStacking: true,
       selectionColor: 'rgba(212, 175, 55, 0.15)', // elegant golden hue
       selectionBorderColor: '#d4af37',
@@ -306,40 +316,10 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
     fabric.Object.prototype.borderColor = '#d4af37';
     fabric.Object.prototype.borderScaleFactor = 1.5;
 
-    // Ensure custom properties are serialized globally by adding them to the stateProperties array
-    const customProps = ['id', 'name', 'isRichText', 'htmlContent', 'styleOptions', 'lockUniScaling'];
-    const proto = fabric.Object.prototype as any;
-    if (!proto.stateProperties) {
-      proto.stateProperties = [];
-    }
-    customProps.forEach(prop => {
-      if (!proto.stateProperties.includes(prop)) {
-        proto.stateProperties.push(prop);
-      }
-    });
-    
-    // Lock aspect ratio scaling by default on images globally
-    (fabric.Image.prototype as any).lockUniScaling = true;
-
-    // Load saved objects from project page if existing
-    const currentPage = currentProject.pages[currentProject.activePageIndex];
-    if (currentPage && currentPage.objects && currentPage.objects.length > 0) {
-      // Serialize objects structure safely into Fabric
-      const jsonStr = JSON.stringify({ objects: currentPage.objects });
-      canvas.loadFromJSON(jsonStr).then(() => {
-        canvas.renderAll();
-        triggerCanvasRefresh();
-      });
-    }
-
-    // Run initial auto fit zoom on mount
-    autoFit();
-
     // Event listeners for state updates
     const onSelection = () => {
       const activeObj = canvas.getActiveObject();
       if (activeObj) {
-        // We set a unique ID on fabric objects on creation. If not present, assign one.
         if (!activeObj.get('id')) {
           activeObj.set('id', `obj_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`);
         }
@@ -393,8 +373,12 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
       const topEdge = center.y - halfHeight;
       const bottomEdge = center.y + halfHeight;
 
-      const canvasWidth = currentProject.width;
-      const canvasHeight = currentProject.height;
+      const state = useEditorStore.getState();
+      const project = state.projects.find(p => p.id === state.activeProjectId);
+      if (!project) return;
+      
+      const canvasWidth = project.width;
+      const canvasHeight = project.height;
 
       let guideX: number | null = null;
       let guideY: number | null = null;
@@ -402,41 +386,34 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
       let newCenterX = center.x;
       let newCenterY = center.y;
 
-      // 1. Horizontal Snapping (X-axis)
-      // Check center snap
+      // Horizontal Snapping (X-axis)
       if (Math.abs(center.x - canvasWidth / 2) < snapTolerance) {
         newCenterX = canvasWidth / 2;
         guideX = canvasWidth / 2;
       }
-      // Check left border snap
       else if (Math.abs(leftEdge) < snapTolerance) {
         newCenterX = halfWidth;
         guideX = 0;
       }
-      // Check right border snap
       else if (Math.abs(rightEdge - canvasWidth) < snapTolerance) {
         newCenterX = canvasWidth - halfWidth;
         guideX = canvasWidth;
       }
 
-      // 2. Vertical Snapping (Y-axis)
-      // Check center snap
+      // Vertical Snapping (Y-axis)
       if (Math.abs(center.y - canvasHeight / 2) < snapTolerance) {
         newCenterY = canvasHeight / 2;
         guideY = canvasHeight / 2;
       }
-      // Check top border snap
       else if (Math.abs(topEdge) < snapTolerance) {
         newCenterY = halfHeight;
         guideY = 0;
       }
-      // Check bottom border snap
       else if (Math.abs(bottomEdge - canvasHeight) < snapTolerance) {
         newCenterY = canvasHeight - halfHeight;
         guideY = canvasHeight;
       }
 
-      // If anything snapped, update the object position
       const originX = activeObj.originX || 'left';
       const originY = activeObj.originY || 'top';
 
@@ -466,7 +443,6 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
       activeObj.set({ left: finalLeft, top: finalTop });
       snapGuidesRef.current = { x: guideX, y: guideY };
 
-      // Update coordinates so other objects & fabric system know it moved
       activeObj.setCoords();
       canvas.renderAll();
     };
@@ -480,26 +456,29 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
       const ctx = opt.ctx;
       ctx.save();
 
-      const designWidth = currentProject.width;
-      const designHeight = currentProject.height;
+      const state = useEditorStore.getState();
+      const project = state.projects.find(p => p.id === state.activeProjectId);
+      if (!project) {
+        ctx.restore();
+        return;
+      }
+
+      const designWidth = project.width;
+      const designHeight = project.height;
       const zoom = canvas.getZoom();
 
-      // 1. Draw Grid Lines if enabled
-      if (useEditorStore.getState().gridEnabled) {
+      // Draw Grid Lines if enabled
+      if (state.gridEnabled) {
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
         ctx.lineWidth = 0.5 / zoom;
+        const gridSize = 50;
         
-        const gridSize = 50; // Grid spacing in design units
-        
-        // Vertical grid lines
         for (let x = gridSize; x < designWidth; x += gridSize) {
           ctx.beginPath();
           ctx.moveTo(x, 0);
           ctx.lineTo(x, designHeight);
           ctx.stroke();
         }
-        
-        // Horizontal grid lines
         for (let y = gridSize; y < designHeight; y += gridSize) {
           ctx.beginPath();
           ctx.moveTo(0, y);
@@ -508,10 +487,10 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
         }
       }
 
-      // 2. Draw Magnetic Snap Guide Lines if active
+      // Draw Magnetic Snap Guide Lines if active
       const snapGuides = snapGuidesRef.current;
-      if (useEditorStore.getState().snapEnabled) {
-        ctx.strokeStyle = '#d4af37'; // Golden color for alignment assist
+      if (state.snapEnabled) {
+        ctx.strokeStyle = '#d4af37';
         ctx.lineWidth = 1 / zoom;
         ctx.setLineDash([4 / zoom, 4 / zoom]);
 
@@ -545,7 +524,6 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
     canvas.on('object:moving', onMoving);
     canvas.on('after:render', onAfterRender);
 
-    // Initial render
     canvas.renderAll();
 
     return () => {
@@ -563,6 +541,38 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({ canvasRef }) =
       canvas.dispose();
       canvasRef.current = null;
     };
+  }, []); // Run ONCE on mount
+
+  // 2. Load project page objects asynchronously when project/page changes
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !currentProject) return;
+
+    const projectWidth = currentProject.width;
+    const projectHeight = currentProject.height;
+
+    // Keep size in sync
+    canvas.setDimensions({
+      width: projectWidth * zoomRatio,
+      height: projectHeight * zoomRatio
+    });
+    canvas.setZoom(zoomRatio);
+
+    const currentPage = currentProject.pages[currentProject.activePageIndex];
+    canvas.backgroundColor = currentPage?.backgroundColor || '#ffffff';
+
+    canvas.clear();
+
+    if (currentPage && currentPage.objects && currentPage.objects.length > 0) {
+      const jsonStr = JSON.stringify({ objects: currentPage.objects });
+      canvas.loadFromJSON(jsonStr).then(() => {
+        canvas.renderAll();
+        triggerCanvasRefresh();
+      });
+    } else {
+      canvas.renderAll();
+      triggerCanvasRefresh();
+    }
   }, [activeProjectId, currentProject?.activePageIndex]);
 
   // Re-render canvas when grid or snapping toggles
