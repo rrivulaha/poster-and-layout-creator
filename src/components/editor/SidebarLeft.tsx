@@ -8,8 +8,6 @@ import * as fabric from 'fabric';
 import { useEditorStore } from '../../store/useEditorStore';
 import { Image as ImageIcon, Layers, Upload, Eye, EyeOff, Lock, Unlock, ArrowUp, ArrowDown, Trash2, Copy, Quote, Sparkles, Type, Table, Play, Download } from 'lucide-react';
 import { svgToDataUrl } from '../../utils/assets';
-import { renderHtmlToDataUrl } from '../../utils/svgRenderer';
-import { TiptapEditor } from './TiptapEditor';
 
 const DEFAULT_RICH_TEXT_STYLES = {
   fontFamily: 'Inter, sans-serif',
@@ -61,29 +59,20 @@ const DEFAULT_TEMPLATES = [
         selectable: true
       },
       {
-        type: 'image',
-        id: 'quote_body_rich',
-        name: 'Quote Body (Rich Text)',
+        type: 'textbox',
+        id: 'quote_body',
+        name: 'Quote Body',
         left: 800,
         top: 1050,
         originX: 'center',
         originY: 'center',
         width: 1200,
-        height: 700,
-        isRichText: true,
-        htmlContent: "<p style=\"text-align: center; font-style: italic;\">\"The only way to do great work is to love what you do. If you haven't found it yet, keep looking. Don't settle. As with all matters of the heart, you'll know when you find it.\"</p>",
-        styleOptions: {
-          fontFamily: 'Inter, Georgia, serif',
-          fontSize: '56px',
-          color: '#111111',
-          lineHeight: '1.6',
-          backgroundColor: '#ffffff',
-          padding: '60px',
-          borderRadius: '16px',
-          borderWidth: '2px',
-          borderColor: '#e2e8f0',
-          textAlign: 'center'
-        },
+        text: '"The only way to do great work is to love what you do. If you haven\'t found it yet, keep looking. Don\'t settle. As with all matters of the heart, you\'ll know when you find it."',
+        fontSize: 56,
+        fontFamily: 'Georgia, serif',
+        fill: '#111111',
+        textAlign: 'center',
+        lineHeight: 1.6,
         selectable: true
       },
       {
@@ -242,29 +231,20 @@ const DEFAULT_TEMPLATES = [
         selectable: true
       },
       {
-        type: 'image',
-        id: 'id_badge_rich',
-        name: 'Access Privileges (Rich Text)',
+        type: 'textbox',
+        id: 'id_badge_privileges',
+        name: 'Access Privileges',
         left: 400,
         top: 890,
         originX: 'center',
         originY: 'center',
         width: 580,
-        height: 140,
-        isRichText: true,
-        htmlContent: "<p style=\"text-align: center; margin:0; padding:0;\">Level 5 Clearance • Secure Labs Access • Exp: 12/2026</p>",
-        styleOptions: {
-          fontFamily: 'Inter, sans-serif',
-          fontSize: '18px',
-          color: '#ffffff',
-          lineHeight: '1.4',
-          backgroundColor: '#1e293b',
-          padding: '12px',
-          borderRadius: '8px',
-          borderWidth: '1px',
-          borderColor: '#475569',
-          textAlign: 'center'
-        },
+        text: 'Level 5 Clearance • Secure Labs Access • Exp: 12/2026',
+        fontSize: 18,
+        fontFamily: 'Inter, sans-serif',
+        fill: '#ffffff',
+        textAlign: 'center',
+        lineHeight: 1.4,
         selectable: true
       },
       {
@@ -359,29 +339,20 @@ const DEFAULT_TEMPLATES = [
         selectable: true
       },
       {
-        type: 'image',
-        id: 'inv_details_rich',
-        name: 'Event Schedule (Rich Text)',
+        type: 'textbox',
+        id: 'inv_details',
+        name: 'Event Schedule',
         left: 500,
         top: 750,
         originX: 'center',
         originY: 'center',
         width: 760,
-        height: 320,
-        isRichText: true,
-        htmlContent: "<p style=\"text-align: center; margin: 0;\">Join us for an exquisite evening of cinema, networking, and creativity.</p><h3 style=\"text-align: center; color: #d4af37; font-weight: bold; margin: 20px 0 10px;\">Saturday, October 24th, 2026</h3><p style=\"text-align: center; margin: 0;\">Seven o'clock in the evening</p><p style=\"text-align: center; font-weight: bold; margin: 10px 0 0;\">Metropolitan Grand Pavilion</p>",
-        styleOptions: {
-          fontFamily: 'Inter, sans-serif',
-          fontSize: '22px',
-          color: '#333333',
-          lineHeight: '1.6',
-          backgroundColor: '#fdfbf7',
-          padding: '30px',
-          borderRadius: '12px',
-          borderWidth: '1px',
-          borderColor: '#e8e5dd',
-          textAlign: 'center'
-        },
+        text: 'Join us for an exquisite evening of cinema, networking, and creativity.\n\nSaturday, October 24th, 2026\nSeven o\'clock in the evening\n\nMetropolitan Grand Pavilion',
+        fontSize: 22,
+        fontFamily: 'Inter, sans-serif',
+        fill: '#333333',
+        textAlign: 'center',
+        lineHeight: 1.6,
         selectable: true
       },
       {
@@ -862,49 +833,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({ canvasRef }) => {
     await loadRow(activeRowIndex + 1);
   };
 
-  // Sequential batch compiler & exporter
-  const triggerBatchExport = async () => {
-    if (!canvas || csvData.length === 0) return;
 
-    setBatchProgress({ current: 0, total: csvData.length, active: true });
-    
-    // De-select active guides to prevent them showing in final compiles
-    canvas.discardActiveObject();
-    canvas.renderAll();
-
-    for (let i = 0; i < csvData.length; i++) {
-      setBatchProgress(prev => ({ ...prev, current: i + 1 }));
-      const row = csvData[i];
-
-      // 1. Compile state
-      await applyRowDataToCanvas(row);
-
-      // Wait a moment for canvas images to load/re-render cleanly
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      // 2. Download Image
-      const dataUrl = canvas.toDataURL({
-        format: 'png',
-        quality: 1.0,
-        multiplier: 2.0 // standard pristine print scale
-      });
-
-      const link = document.createElement('a');
-      const recordKey = row[canvasFields[0]?.name] || `item_${i + 1}`;
-      const suffix = recordKey.toString().replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      link.download = `${currentProject?.name || 'batch'}_${suffix}.png`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      // Grace period to prevent download spam blocks
-      await new Promise(resolve => setTimeout(resolve, 400));
-    }
-
-    setBatchProgress(prev => ({ ...prev, active: false }));
-    alert(`⚡ Batch processing completed successfully! ${csvData.length} files generated & downloaded.`);
-  };
 
   const { 
     projects,
@@ -930,20 +859,18 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({ canvasRef }) => {
     }
     const objects = canvas.getObjects();
     const fields = objects.map(obj => {
-      const isRich = (obj as any).isRichText === true;
-      const isTxt = (obj.type === 'textbox' || obj.type?.includes('text')) && !isRich;
-      const isImg = obj.type === 'image' && !isRich;
+      const isTxt = obj.type === 'textbox' || obj.type?.includes('text');
+      const isImg = obj.type === 'image';
       
-      let type: 'richtext' | 'text' | 'image' | 'other' = 'other';
-      if (isRich) type = 'richtext';
-      else if (isTxt) type = 'text';
+      let type: 'text' | 'image' | 'other' = 'other';
+      if (isTxt) type = 'text';
       else if (isImg) type = 'image';
 
       return {
         id: (obj as any).id || (obj as any).get?.('id') || '',
-        name: obj.get('name') || (obj as any).name || `${isRich ? 'Rich Text' : isTxt ? 'Text' : isImg ? 'Image/Logo' : 'Element'}`,
+        name: obj.get('name') || (obj as any).name || `${isTxt ? 'Text' : isImg ? 'Image/Logo' : 'Element'}`,
         type,
-        value: isRich ? (obj as any).htmlContent || '' : isTxt ? (obj as any).text || '' : (obj as any).getSrc?.() || '',
+        value: isTxt ? (obj as any).text || '' : (obj as any).getSrc?.() || '',
         object: obj
       };
     }).filter(f => f.type !== 'other' && f.id);
@@ -1047,20 +974,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({ canvasRef }) => {
     }
   };
 
-  const handleUpdateRichTextField = (objId: string, html: string) => {
-    if (!canvas) return;
-    const obj = canvas.getObjects().find(o => (o as any).id === objId);
-    if (obj && (obj as any).isRichText) {
-      const styles = (obj as any).styleOptions || DEFAULT_RICH_TEXT_STYLES;
-      (obj as any).htmlContent = html;
-      const dataUrl = renderHtmlToDataUrl(html, obj.width || 380, obj.height || 230, styles);
-      (obj as fabric.Image).setSrc(dataUrl).then(() => {
-        canvas.renderAll();
-        triggerCanvasRefresh();
-        saveActiveProjectToStorage(canvas.toJSON().objects || []);
-      });
-    }
-  };
+
 
   const handleUpdateImageField = (objId: string, file: File) => {
     if (!canvas || !file) return;
@@ -1165,58 +1079,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({ canvasRef }) => {
     triggerCanvasRefresh();
   };
 
-  const handleAddRichText = () => {
-    if (!canvas) return;
-    
-    const initialHtml = '<h1><strong>Elegant Callout</strong></h1><p>Type styled bullets or quotes here with <strong>Tiptap</strong>.</p><ul><li>Double-click or select me</li><li>Format real-time in the properties panel!</li></ul>';
-    
-    const initialStyles = {
-      fontFamily: 'Inter, sans-serif',
-      fontSize: '18px',
-      color: '#111111',
-      lineHeight: '1.6',
-      backgroundColor: '#fdfbf7', // warm beige background
-      padding: '20px',
-      borderRadius: '8px',
-      borderWidth: '1px',
-      borderColor: '#d4af37',
-      textAlign: 'left'
-    };
 
-    const width = 380;
-    const height = 230;
-    
-    const dataUrl = renderHtmlToDataUrl(initialHtml, width, height, initialStyles);
-    
-    fabric.Image.fromURL(dataUrl, {}, {}).then((imgObj) => {
-      imgObj.set({
-        left: 100,
-        top: 120,
-        selectable: true,
-        id: `richtext_${Date.now()}`,
-        name: 'Rich Text (Tiptap)'
-      });
-
-      // Save custom fields for re-renders
-      (imgObj as any).isRichText = true;
-      (imgObj as any).htmlContent = initialHtml;
-      (imgObj as any).styleOptions = initialStyles;
-      (imgObj as any).lockUniScaling = true;
-
-      imgObj.setControlsVisibility({
-        ml: false,
-        mr: false,
-        mt: false,
-        mb: false
-      });
-
-      canvas.add(imgObj);
-      canvas.setActiveObject(imgObj);
-      canvas.renderAll();
-      triggerCanvasRefresh();
-      saveActiveProjectToStorage(canvas.toJSON().objects || []);
-    });
-  };
 
   // 2. Add Shape Helpers
   const handleAddShape = (shapeType: 'rect' | 'circle' | 'line') => {
@@ -1446,13 +1309,6 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({ canvasRef }) => {
                   className="border border-stone-200 hover:border-[#d4af37] rounded-lg p-2.5 text-center text-xs font-bold text-stone-700 bg-white hover:bg-[#d4af37]/5 transition-all"
                 >
                   Line/Rule
-                </button>
-                <button
-                  onClick={handleAddRichText}
-                  className="border border-stone-200 hover:border-[#d4af37] rounded-lg p-2.5 text-center text-xs font-bold text-stone-700 bg-white hover:bg-[#d4af37]/5 transition-all col-span-2 flex items-center justify-center gap-2 shadow-sm"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
-                  Add Rich Text (Tiptap)
                 </button>
               </div>
             </div>
@@ -1732,12 +1588,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({ canvasRef }) => {
                         />
                       )}
 
-                      {field.type === 'richtext' && (
-                        <TiptapEditor
-                          value={field.value}
-                          onChange={(html) => handleUpdateRichTextField(field.id, html)}
-                        />
-                      )}
+
 
                       {field.type === 'image' && (
                         <div className="space-y-1.5">
@@ -1981,32 +1832,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({ canvasRef }) => {
                         </div>
                       </div>
 
-                      {/* Advanced Action Toggle/Drawer for Full Auto Batch Export */}
-                      <div className="pt-2 border-t border-stone-150">
-                        {batchProgress.active ? (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between text-[10px] font-bold text-stone-500">
-                              <span>Full Auto Compiling...</span>
-                              <span>{batchProgress.current} / {batchProgress.total}</span>
-                            </div>
-                            <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden border border-stone-200">
-                              <div 
-                                className="bg-[#d4af37] h-full transition-all duration-300"
-                                style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={triggerBatchExport}
-                            className="w-full py-1.5 px-3 bg-stone-100 hover:bg-stone-200 border border-stone-200 text-stone-600 font-bold text-[10px] rounded transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                            title="Automatically export all records sequentially (no manual pausing)"
-                          >
-                            <Play className="w-2.5 h-2.5 text-stone-500" />
-                            Run Full Auto Batch Run
-                          </button>
-                        )}
-                      </div>
+
                     </div>
                   )}
                 </div>
